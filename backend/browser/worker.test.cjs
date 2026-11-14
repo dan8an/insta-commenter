@@ -15,12 +15,20 @@ test('signed-in username comes from the sidebar avatar, not a feed profile',asyn
     await assert.rejects(worker.username(),e=>e.category==='authentication');
   }finally{await f.context.close()}
 });
+test('the save request carries this comment; a comment query or unrelated mutation does not',()=>{
+  const text='goated';
+  const body='variables='+encodeURIComponent(JSON.stringify({comment_text:text}));
+  const req=(url,headers,data)=>({method:()=>'POST',url:()=>url,headers:()=>headers,postData:()=>data});
+  assert.equal(worker.isCommentSubmit(req('https://www.instagram.com/graphql/query',{'x-fb-friendly-name':'PolarisPostCommentInputRevampedMutation'},body),text),true);
+  assert.equal(worker.isCommentSubmit(req('https://www.instagram.com/graphql/query',{'x-fb-friendly-name':'PolarisPostCommentsPaginationQuery'},body),text),false);
+  assert.equal(worker.isCommentSubmit(req('https://www.instagram.com/graphql/query',{'x-fb-friendly-name':'PolarisCommentSeenMutation'},''),text),false);
+});
 test('only normalized Instagram permalinks are accepted',()=>{
   assert.equal(worker.normalize('https://instagram.com/reel/Ab_c/?x=1'),'https://www.instagram.com/reel/Ab_c/');
   for(const url of ['http://instagram.com/p/a/','https://instagram.com.evil/p/a/','https://user@instagram.com/p/a/','https://instagram.com/stories/a/'])assert.throws(()=>worker.normalize(url));
 });
 const escape = text => text.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
-async function fixture({existing=false,hideAfter=false,author='tester',challenge=false,composer='form'}={}) {
+async function fixture({existing=false,hideAfter=false,author='tester',challenge=false,composer='form',decline=false,slow=false,drop=false,decoy=false,permalinkOnly=false}={}) {
   browser ||= await chromium.launch({headless:true,channel:'chrome'});
   const context=await browser.newContext(); const page=await context.newPage();
   let posts=0, reloads=0;
@@ -28,15 +36,26 @@ async function fixture({existing=false,hideAfter=false,author='tester',challenge
   const row=()=>`<li><a href="/${author}/">${author}</a><span>${message}</span><a href="/p/fixture/c/12345/"><time>now</time></a><button>Reply</button></li>`;
   await page.route('**/*',async route=>{
     const url=new URL(route.request().url());
-    if(url.pathname==='/fixture-submit'){posts++;return route.fulfill({json:{ok:true}})}
+    if(url.pathname==='/graphql/query')return route.fulfill({status:200,contentType:'application/json',body:'{"status":"ok"}'});
+    if(url.pathname==='/fixture-submit'){
+      if(slow)await new Promise(r=>setTimeout(r,3000));
+      if(drop)return route.fulfill({status:400,contentType:'application/json',body:'{"status":"fail"}'});
+      posts++;
+      if(permalinkOnly)return route.fulfill({json:{data:{xig_comment_create:{comment:{pk:'12345',text:message,user:{username:author}}}}}});
+      return route.fulfill({json:{status:'ok'}});
+    }
     if(url.hostname!=='www.instagram.com')return route.abort();
     reloads++;
     if(hideAfter&&posts)return route.abort();
     const posted = JSON.stringify(row());
+    const save = `const res=await fetch('/fixture-submit',{method:'POST'});if(!res.ok)return;document.querySelector('ul').innerHTML=${posted};const box=document.querySelector('textarea');if(box)box.value=''`;
+    const prelude = decoy ? `await fetch('/graphql/query',{method:'POST',headers:{'x-fb-friendly-name':'PolarisCommentOffensiveCheckMutation','content-type':'application/x-www-form-urlencoded'},body:'comment_text='+encodeURIComponent(${JSON.stringify(message)})});await new Promise(r=>setTimeout(r,800));` : '';
+    const action = decline ? '' : prelude + save;
     const composerHtml = composer === 'delayed'
-      ? `<div id="composer"><form><textarea placeholder="Add a comment…"></textarea></form></div><script>const send=async()=>{await fetch('/fixture-submit',{method:'POST'});document.querySelector('ul').innerHTML=${posted}};document.querySelector('textarea').addEventListener('input',()=>{if(document.getElementById('post'))return;const b=document.createElement('div');b.id='post';b.setAttribute('role','button');b.textContent='Post';document.getElementById('composer').appendChild(b);b.addEventListener('click',send)});</script>`
-      : `<form><textarea placeholder="Add a comment…"></textarea><button type="submit">Post</button></form><script>document.querySelector('form').onsubmit=async(e)=>{e.preventDefault();await fetch('/fixture-submit',{method:'POST'});document.querySelector('ul').innerHTML=${posted}}</script>`;
-    return route.fulfill({contentType:'text/html; charset=utf-8',body:`<!doctype html><html><head><meta charset="utf-8"></head><body><a href="/tester/" aria-label="Profile">Profile</a><ul>${existing||posts?row():''}</ul>${composerHtml}</body></html>`});
+      ? `<div id="composer"><form><textarea placeholder="Add a comment…"></textarea></form></div><script>const send=async()=>{${action}};document.querySelector('textarea').addEventListener('input',()=>{if(document.getElementById('post'))return;const b=document.createElement('div');b.id='post';b.setAttribute('role','button');b.textContent='Post';document.getElementById('composer').appendChild(b);b.addEventListener('click',send)});</script>`
+      : `<form><textarea placeholder="Add a comment…"></textarea><button type="submit">Post</button></form><script>document.querySelector('form').onsubmit=async(e)=>{e.preventDefault();${action}}</script>`;
+    const showComment = existing || (posts && (!permalinkOnly || /\/c\/\d+/.test(url.pathname)));
+    return route.fulfill({contentType:'text/html; charset=utf-8',body:`<!doctype html><html><head><meta charset="utf-8"></head><body><a href="/tester/" aria-label="Profile">Profile</a><div hidden>confirm it's you</div><ul>${showComment?row():''}</ul>${composerHtml}</body></html>`});
   });
   await page.goto('https://www.instagram.com/'+(challenge?'challenge/':'p/fixture/'));
   worker.setPageForTest(page);worker.setOwnerForTest('tester');
@@ -53,6 +72,24 @@ test('existing identical comment is submitted again',async()=>{
 });
 test('reload failure after submission is unknown and never retried',async()=>{
   const f=await fixture({hideAfter:true});try{await assert.rejects(worker.publish({url:'https://www.instagram.com/p/fixture/',message:f.message}),e=>e.category==='unknown');assert.equal(f.posts(),1)}finally{await f.context.close()}
+});
+test('text left in the box means the comment was not posted',async()=>{
+  const f=await fixture({decline:true});try{await assert.rejects(worker.publish({url:'https://www.instagram.com/p/fixture/',message:f.message}),e=>e.category==='provider'&&/did not send/.test(e.message));assert.equal(f.posts(),0)}finally{await f.context.close()}
+});
+test('a slow save is not reloaded away before Instagram accepts it',async()=>{
+  const f=await fixture({slow:true});try{const result=await worker.publish({url:'https://www.instagram.com/p/fixture/',message:f.message});assert.equal(result.comment_id,'12345');assert.equal(f.posts(),1)}finally{await f.context.close()}
+});
+test('a follow-up publish opens the post before it looks for the profile',async()=>{
+  const f=await fixture();try{await f.page.setContent('<main><p>Opened comment</p></main>');const result=await worker.publish({url:'https://www.instagram.com/p/fixture/',message:f.message});assert.equal(result.comment_id,'12345');assert.equal(f.posts(),1)}finally{await f.context.close()}
+});
+test('a created comment is confirmed on its own link when the post page hides it',async()=>{
+  const f=await fixture({permalinkOnly:true});try{const result=await worker.publish({url:'https://www.instagram.com/p/fixture/',message:f.message});assert.equal(result.comment_id,'12345');assert.equal(f.posts(),1)}finally{await f.context.close()}
+});
+test('a comment check that returns first does not cancel the later save',async()=>{
+  const f=await fixture({decoy:true});try{const result=await worker.publish({url:'https://www.instagram.com/p/fixture/',message:f.message});assert.equal(result.comment_id,'12345');assert.equal(f.posts(),1)}finally{await f.context.close()}
+});
+test('a refused save is not described as an unverified post',async()=>{
+  const f=await fixture({drop:true});try{await assert.rejects(worker.publish({url:'https://www.instagram.com/p/fixture/',message:f.message}),e=>e.category==='provider'&&/refused/.test(e.message));assert.equal(f.posts(),0)}finally{await f.context.close()}
 });
 test('a security challenge stops before clicking',async()=>{
   const f=await fixture({challenge:true});try{await assert.rejects(worker.publish({url:'https://www.instagram.com/p/fixture/',message:f.message}),e=>e.category==='authentication');assert.equal(f.posts(),0)}finally{await f.context.close()}

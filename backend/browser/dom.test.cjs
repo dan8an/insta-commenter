@@ -18,6 +18,10 @@ test('requires text and author in the same individual comment row',async()=>{
 test('caption is not accepted as a published comment',async()=>{
  assert.equal(await inspect('<article><a href="https://www.instagram.com/tester/">tester</a><span>Hello 🌿</span><time>now</time></article>'),null);
 });
+test('a deeply nested comment row still confirms',async()=>{
+ const deep='<div><a href="https://www.instagram.com/tester/">tester</a><div><div><div><div><div><div><div><span>Hello 🌿</span></div></div></div></div></div></div></div><time>2m</time><div role="button"><span>Reply</span></div></div>';
+ assert.deepEqual(await inspect(deep),{comment_id:null});
+});
 test('visible comment without an ID has no fabricated ID',async()=>{
  assert.deepEqual(await inspect(row('tester')),{comment_id:null});
 });
