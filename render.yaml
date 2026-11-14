@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: instacomment-api
+    runtime: docker
+    rootDir: backend
+    healthCheckPath: /api/health
+    envVars:
+      - key: MODE
+        value: live
+      - key: COOKIE_SECURE
+        value: true
+      - key: DATABASE_URL
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: TOKEN_KEY
+        sync: false
+      - key: INSTAGRAM_APP_ID
+        sync: false
+      - key: INSTAGRAM_APP_SECRET
+        sync: false
+      - key: INSTAGRAM_REDIRECT_URI
+        sync: false

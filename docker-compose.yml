@@ -1,0 +1,21 @@
+services:
+  backend:
+    build: ./backend
+    ports: ["8000:8000"]
+    environment:
+      MODE: demo
+      DATABASE_URL: sqlite:////data/instacomment.db
+      FRONTEND_ORIGIN: http://localhost:5173
+    volumes: ["data:/data"]
+  frontend:
+    image: node:22-alpine
+    working_dir: /app
+    volumes: ["./frontend:/app", "modules:/app/node_modules"]
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    ports: ["5173:5173"]
+    environment:
+      API_PROXY_TARGET: http://backend:8000
+    depends_on: [backend]
+volumes:
+  data:
+  modules:
