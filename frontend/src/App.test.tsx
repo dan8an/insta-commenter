@@ -47,8 +47,8 @@ describe('local browser interface',()=>{
   const {fetcher}=setup(true,'unknown');await screen.findByText('@tester');
   fireEvent.change(screen.getByLabelText(/Instagram post URL/),{target:{value:'https://instagram.com/p/test/'}});
   fireEvent.change(screen.getByLabelText(/Your comment/),{target:{value:'Hello'}});
-  fireEvent.change(screen.getByLabelText('Exact post count'),{target:{value:'2500'}});
-  expect(screen.getByLabelText(/Times to post/)).toHaveValue('1000');
+  fireEvent.change(screen.getByLabelText('Exact post count'),{target:{value:'25000'}});
+  expect(screen.getByLabelText(/Times to post/)).toHaveValue('10000');
   fireEvent.click(screen.getByRole('button',{name:'Publish Comment'}));
   await screen.findByText('Publishing status unknown');
   expect(fetcher.mock.calls.filter(([url])=>url.endsWith('/comments/publish'))).toHaveLength(1);
