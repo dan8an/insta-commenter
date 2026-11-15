@@ -37,9 +37,10 @@ function isCommentSubmit(request, message) {
   if (/instagram\.com/.test(url) && /Mutation/.test(friendly)) return true;
   return /comment_text/i.test(request.postData() || '');
 }
-function watchCommentSubmit(page, message) {
+function watchCommentSubmit(page, message, author) {
   const state = {started:false, pending:0, result:null, touchedAt:0};
   const matches = request => isCommentSubmit(request, message);
+  const refused = result => !!(result && (result.status >= 400 || result.payload.status === 'fail'));
   const onRequest = request => {
     if (!matches(request)) return;
     state.started = true;
@@ -58,8 +59,13 @@ function watchCommentSubmit(page, message) {
     let payload = {};
     try { payload = await response.json(); } catch { payload = {}; }
     state.pending = Math.max(0, state.pending - 1);
-    state.result = {status:response.status(), payload};
     state.touchedAt = Date.now();
+    const next = {status:response.status(), payload};
+    const hasId = state.result && createdCommentId(state.result.payload, message, author);
+    const hasRefusal = refused(state.result);
+    const nextId = createdCommentId(payload, message, author);
+    // A comment check echoes the text and returns before the save. It must not replace either result.
+    if (!hasId && (!hasRefusal || nextId)) state.result = next;
   };
   page.on('request', onRequest);
   page.on('requestfailed', onFailed);
@@ -118,6 +124,52 @@ async function challenge() {
   for (let i = 0, n = await restriction.count(); i < Math.min(n, 8); i++) {
     if (await restriction.nth(i).isVisible().catch(() => false)) fail('challenge','Instagram requires attention. Resolve the message manually in the browser; no comment was retried.');
   }
+}
+function alreadyOnPost(target) {
+  try { return !!(page && !page.isClosed() && normalize(page.url()) === target); }
+  catch { return false; }
+}
+async function ensurePost(target) {
+  if (!page || page.isClosed()) await launch();
+  // A post that is already open still has its comment field. Loading it again is the request Instagram refuses.
+  if (alreadyOnPost(target)) {
+    const field = page.locator('textarea[placeholder*="comment" i]:visible, textarea[aria-label*="comment" i]:visible');
+    try {
+      await field.first().waitFor({state:'visible', timeout:4000});
+      if (await field.count() === 1) return;
+    } catch { /* the field is gone, so the post has to be opened */ }
+  }
+  await openPost(target);
+}
+function onInstagramPrompt() {
+  if (!page || page.isClosed()) return false;
+  try {
+    const u = new URL(page.url());
+    return ['instagram.com','www.instagram.com'].includes(u.hostname) && /challenge|checkpoint|two_factor|accounts\/login|accounts\/onetap|consent/.test(u.pathname);
+  } catch { return false; }
+}
+async function openPost(target) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (!page || page.isClosed()) await launch();
+    let documentStatus = 0;
+    const onResponse = response => {
+      if (response.request().resourceType() !== 'document') return;
+      const current = response.url().split('?')[0].replace(/\/?$/, '/');
+      if (current === target) documentStatus = response.status();
+    };
+    page.on('response', onResponse);
+    try {
+      await page.goto(target, {waitUntil:'domcontentloaded', timeout:30000});
+      return;
+    } catch (e) {
+      // A 429 is Instagram's limit. Do not reload or send the comment.
+      if (documentStatus === 429) fail('rate_limit', 'Instagram is limiting comments from this browser. Wait before trying again. Nothing was posted.');
+      if (page && !page.isClosed()) throw e;
+    } finally {
+      if (page && !page.isClosed()) page.off('response', onResponse);
+    }
+  }
+  fail('browser', 'The browser could not open the post. Check its window, then try again.');
 }
 function useInstagramPage() {
   if (!context) return;
@@ -240,18 +292,23 @@ async function publish({url,message}) {
   try {
     if (!owner) fail('authentication','Click Check connection before publishing.');
     const author = owner;
-    await challenge();
     const target = normalize(url);
-    // The previous comment's page has no profile nav, so identify the account after the post opens.
-    await page.goto(target, {waitUntil:'domcontentloaded',timeout:30000});
+    // A login challenge must be finished by hand. Any other page is sent back to the post.
+    if (onInstagramPrompt()) await challenge();
+    await ensurePost(target);
     await challenge();
     if (normalize(page.url()) !== target) fail('unsupported','Instagram did not open the requested post. Open it manually to check access.');
     if (await username() !== author) fail('authentication','Could not confirm the connected account on this post.');
     const editor = page.locator('textarea[placeholder*="comment" i]:visible, textarea[aria-label*="comment" i]:visible');
     await editor.first().waitFor({state:'visible',timeout:12000}).catch(() => fail('unsupported','No comment field is available. Check post access, comments settings, or dismiss dialogs in the browser.'));
     if (await editor.count() !== 1) fail('unsupported','More than one comment field is visible. Open the post manually and try again.');
-    await editor.click();
-    await editor.fill(message);
+    try {
+      await editor.click();
+      await editor.fill(message);
+    } catch {
+      await editor.click();
+      await editor.fill(message);
+    }
     await challenge();
     if (normalize(page.url()) !== target || await username() !== author) fail('authentication','Post or account changed before submission. Nothing was posted.');
     // Instagram renders Post only after the field has text, often outside the form.
@@ -262,9 +319,9 @@ async function publish({url,message}) {
       if (!found) await page.waitForTimeout(200);
     }
     if (!found) fail('unsupported','Instagram’s comment controls were not recognized. Nothing was posted.');
-    // The first comment-named response is not the save. Reloading on it aborts the
-    // request that actually carries this comment, so the comment never leaves the browser.
-    const watch = watchCommentSubmit(page, message);
+    // A check can include this text and return before the save. Only a response
+    // with this comment's id is the save. Reloading the post before that cancels it.
+    const watch = watchCommentSubmit(page, message, author);
     submitted = true;
     let entered = false;
     try {
@@ -279,36 +336,24 @@ async function publish({url,message}) {
         if (!watch.state.started && now - waitFrom > 2500) break;
         if (saveSettled(watch.state, now)) {
           const refused = watch.state.result && (watch.state.result.status >= 400 || watch.state.result.payload.status === 'fail');
+          const identified = watch.state.result && createdCommentId(watch.state.result.payload, message, author);
+          if (refused || identified) break;
           const remaining = await editor.inputValue().catch(() => '');
-          // The composer still holding the text means that response was not the save.
-          if (!entered && !refused && normText(remaining) === normText(message)) {
+          if (!entered && normText(remaining) === normText(message)) {
             entered = true;
             watch.state.touchedAt = Date.now();
             await editor.press('Enter').catch(() => {});
-            continue;
           }
-          break;
         }
         await page.waitForTimeout(100);
       }
     } finally { watch.stop(); }
     if (!watch.state.result) fail('provider', 'Instagram did not send the comment. Nothing was published.');
     if (watch.state.result.status >= 400 || watch.state.result.payload.status === 'fail') fail('provider', 'Instagram refused this comment, so nothing was published.');
-    // The post page only renders a subset of comments. A new comment is visible on its own link.
     const createdId = createdCommentId(watch.state.result.payload, message, author);
-    try {
-      if (createdId) await page.goto(target + 'c/' + createdId + '/', {waitUntil:'domcontentloaded', timeout:30000});
-      else await page.reload({waitUntil:'domcontentloaded', timeout:30000});
-    }
-    catch { fail('unknown','Post was clicked, but the page could not be reloaded to confirm the comment. Check Instagram before trying again.'); }
-    for (let i=0;i<8;i++) {
-      await challenge();
-      if (!samePost(page.url(), target)) break;
-      const found = await matchingComment(message,author);
-      if (found) return {...found,reason:`Confirmed on the reloaded Instagram page as @${author}. This is browser verification, not an API receipt.`};
-      await page.waitForTimeout(1000);
-    }
-    fail('unknown','Post was clicked, but the comment could not be verified after reloading. Check Instagram before trying again.');
+    // The id, text, and account are the confirmation. Opening the comment link would leave the post and force the next comment to load it again.
+    if (!createdId) fail('unknown', 'Instagram did not return the new comment. Check the post before trying again.');
+    return {comment_id:createdId, reason:`Confirmed from the save response as @${author}. The post stayed open for the next comment.`};
   } catch(e) {
     if (e instanceof BrowserFailure) throw e;
     if (submitted) fail('unknown','Submission may have reached Instagram, but confirmation was unavailable. Inspect the post before trying again. No automatic retry was made.');
