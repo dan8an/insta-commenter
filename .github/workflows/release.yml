@@ -1,0 +1,77 @@
+name: macOS launcher release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing stable tag to release (for example v1.0.0)'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+jobs:
+  test-and-package:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Validate stable tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: python3 -c 'import os,re; assert re.fullmatch(r"v\d+\.\d+\.\d+", os.environ["RELEASE_TAG"]), "Stable version required"'
+      - name: Launcher tests
+        run: python3 -m unittest discover -s scripts/tests -p 'test_launcher.py' -v
+      - name: Backend setup and tests
+        run: |
+          python3 -m venv backend/.venv
+          backend/.venv/bin/python -m pip install -r backend/requirements.txt
+          cd backend
+          .venv/bin/python -m pytest tests -q
+      - name: Frontend checks
+        working-directory: frontend
+        run: |
+          npm ci
+          npm test
+          npm run test:browser-dom
+          npm run build
+      - name: Packaged startup and shutdown smoke test
+        run: python3 -m unittest discover -s scripts/tests -p 'test_launcher_smoke.py' -v
+      - name: Package release
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: python3 scripts/package-release.py "$RELEASE_TAG"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macOS-launcher
+          path: release-dist/*
+          if-no-files-found: error
+  publish:
+    needs: test-and-package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: macOS-launcher
+          path: release-dist
+      - name: Publish complete stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" release-dist/* --verify-tag --latest --title "InstaComment $RELEASE_TAG" --notes 'Download InstaComment-macOS.zip, unzip it, and double-click InstaComment.command. Requires macOS, Python 3.11+, Node.js 22+, and Google Chrome. Keep the extracted folder together. See README.md for setup, updates, and troubleshooting.'

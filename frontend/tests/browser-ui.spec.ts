@@ -21,6 +21,8 @@ test('desktop browser connection, publishing and dark appearance',async({page})=
  expect(opened).toBe(1);
  await page.getByLabel('Instagram post URL').fill('https://www.instagram.com/p/example/');
  await page.getByLabel('Your comment').fill('A thoughtful comment 🌿\nSecond line.');
+ await expect(page.locator('.preview-comment')).toContainText('A thoughtful comment 🌿');
+ await page.screenshot({path:'test-results/composer-light.png',fullPage:true});
  await page.getByLabel('Times to post').fill('3');
  await expect(page.getByLabel('Exact post count')).toHaveValue('3');
  await page.getByRole('button',{name:'Publish Comment',exact:true}).click();

@@ -1,94 +1,148 @@
-# InstaComment — local browser edition
+# InstaComment — local publishing studio
 
-Run InstaComment on your Mac and publish individual Instagram comments through a dedicated, visible browser. No Facebook account, Meta developer app, OAuth credentials, professional account conversion, paid API, or HTTPS tunnel is required by this application. You still need an Instagram account able to access and comment on the target post.
+Compose Instagram comments in a focused workspace, preview your draft, and publish through a dedicated, visible Chrome window on your Mac. Sign in directly on Instagram; the app never asks for your password or 2FA code.
 
-The React frontend and FastAPI/SQLite backend are retained. The backend controls a local Node/Playwright worker. Login happens directly in Instagram; the app never asks for your Instagram password or 2FA code. This is unofficial browser automation, not an official Instagram API integration. Instagram can interrupt it with login challenges or UI changes. There is no evasion or automatic retry.
+## Download and launch on macOS
 
-## Start (existing installation)
+**[Download InstaComment for macOS](https://github.com/dan8an/insta-commenter/releases/latest/download/InstaComment-macOS.zip)** · [Release notes and all downloads](https://github.com/dan8an/insta-commenter/releases)
 
-Stop your old backend/frontend terminals with **Ctrl+C**, then run:
+### One-time setup
+
+Install these prerequisites if they are not already on your Mac:
+
+- **Python 3.11 or newer:** [Python for macOS](https://www.python.org/downloads/macos/). Use the installer and its included certificate-installation instructions.
+- **Node.js 22 or newer, with npm:** [Node.js downloads](https://nodejs.org/en/download).
+- **Google Chrome:** [Download Chrome](https://www.google.com/chrome/) and place it in `/Applications`.
+
+The launcher checks these requirements and tells you what is missing. It installs the app's Python and JavaScript dependencies automatically, without administrator access. An internet connection is needed for initial setup and new versions.
+
+### Start the app
+
+1. Download **InstaComment-macOS.zip** from the link above. Choose that release asset, not GitHub's automatically generated “Source code” archive.
+2. Unzip it and move the entire **InstaComment** folder somewhere permanent, such as your home folder. Keep `InstaComment.command` and the other files together.
+3. Double-click **InstaComment.command**. A Terminal window opens and shows installation or update progress. The first launch may take several minutes.
+4. When both servers are ready, the launcher opens **http://localhost:5173** in your default browser.
+5. Keep the Terminal window open while using the app. To stop, select that window and press **Ctrl+C**. Closing the app's browser tab alone does not stop it.
+
+To start again, double-click the same launcher. You can make a Finder alias to `InstaComment.command` for easier access, keeping the original folder intact.
+
+This is an unsigned script launcher, not a signed/notarized macOS application. If macOS blocks your downloaded copy, follow [Apple's instructions for opening trusted downloaded software](https://support.apple.com/en-us/102445). Do not disable Gatekeeper globally.
+
+### Automatic updates
+
+On each launch, the launcher checks this repository's **latest stable GitHub release**. It downloads newer versions, verifies the ZIP against the release's SHA-256 checksum, installs their dependencies, and starts the new app. Ordinary UI and technical changes appear once a maintainer publishes a new release and you restart; un-released commits on `main` do not reach launcher users.
+
+- Releases install into separate version folders. Existing data is kept outside those folders.
+- The active-version pointer changes only after both servers respond successfully.
+- If GitHub is unavailable, an installed or bundled release can still start. A first-time dependency installation still needs internet access.
+- If installing a new release's dependencies fails, the launcher attempts to use the previously working installation.
+- Startup failures leave the previous version recorded; there is no automatic database rollback. The launcher shows the error instead of hiding it.
+- Ordinary app updates require no changes to the downloaded launcher. A future change to the launcher protocol or system prerequisites may require downloading a fresh launcher.
+
+To skip the update check, run this from the extracted folder in Terminal:
 
 ```sh
-cd /Users/danieleitan/Desktop/Projects/insta-commenter
-./scripts/start-local.sh
+./InstaComment.command --offline
 ```
 
-Open **http://localhost:5173**. Keep that exact origin; don't use an ngrok address or mix `127.0.0.1` into the frontend URL.
-
-The launcher sets browser mode, loopback binding, and local cookie settings, overriding old MODE/demo/OAuth/tunnel values. It uses Google Chrome already installed on your Mac. It checks for occupied ports before starting and shuts down both servers with Ctrl+C. It does not modify your `.env` or stop your existing processes for you.
-
-If dependencies have changed since your last installation:
-
-```sh
-cd frontend
-npm install
-cd ..
-```
-
-## First installation
-
-Requires Python 3.11+, Node 20+, and Google Chrome.
-
-```sh
-python3 -m venv backend/.venv
-backend/.venv/bin/pip install -r backend/requirements.txt
-cd frontend
-npm install
-cd ..
-./scripts/start-local.sh
-```
-
-Python Playwright is **not** required. The browser worker uses Node Playwright from the frontend installation.
-
-If you prefer a dedicated downloaded Chromium instead of the Chrome executable:
-
-```sh
-cd frontend
-npm run browser:install
-cd ..
-BROWSER_CHANNEL=chromium ./scripts/start-local.sh
-```
-
-Either option uses a separate InstaComment profile, never your everyday Chrome profile.
+Use `--no-open` to start the servers without opening the workspace tab automatically. Only one launcher can run at a time. It will not stop an existing app or another program using ports 5173 or 8000.
 
 ## Connect and publish
 
-1. Click **Open Instagram browser**. A separate Chrome window opens Instagram.
-2. Sign in yourself. Complete any 2FA/security checks and dismiss cookie/login dialogs manually. Use Instagram's English interface for the current selectors.
+1. In **Browser session**, click **Open Instagram browser**. A separate Chrome window opens Instagram.
+2. Sign in yourself and complete any 2FA/security checks. Dismiss cookie dialogs and use Instagram's English interface.
 3. Return to InstaComment and click **Check connection**. Verify the displayed username.
-4. Paste a `/p/` or `/reel/` HTTPS permalink, write your comment, and click **Publish Comment** once.
-5. Leave the dedicated browser on the selected post until the operation finishes. Don't switch accounts, navigate away or manually post the same text during the operation.
-6. Independently inspect your first comment on Instagram to verify the integration against your account.
+4. Paste an Instagram `/p/` or `/reel/` HTTPS link, write your comment, and check the live draft preview. The preview is illustrative; Instagram's layout can differ.
+5. Leave **Times to post** at **1** for one submission. A larger value requests that many sequential submissions and stops at the first unconfirmed result.
+6. Click **Publish Comment**. Leave the dedicated Instagram window on the selected post until the operation finishes. Do not navigate away, switch accounts, or manually submit the same comment during an operation.
+7. Inspect **Recent activity** and independently check your first published comment on Instagram.
 
-The post can belong to another account if Instagram's ordinary browser UI permits you to comment. Private/unavailable posts and disabled comment controls may prevent posting. Browser mode supports top-level comments only; reply directly in Instagram if needed.
+You can comment on posts that your account can access and whose comment controls are available. Browser mode supports top-level comments; reply to existing comments directly on Instagram. Comments are limited to 2,200 Unicode characters, including emojis and line breaks.
 
-## What counts as success
+No Facebook account, Meta developer app, professional-account conversion, paid API, or tunnel is required. This is unofficial browser automation, not an official Instagram API integration. Instagram can interrupt it with security challenges, limits, or UI changes; the app does not bypass them or automatically retry an uncertain submission.
 
-Before submitting, the worker checks the visible signed-in profile, URL, comment field and Post button. It refuses if an identical comment by that username is already visible. It fills the text, clicks Post **once**, reloads the post, and looks for the exact normalized text under that username in an individual rendered comment row with a timestamp and Reply control.
+## Understanding results
 
-- **Published:** comment text/author were found after reload. This is browser verification, not an API receipt. An ID is included only if the visible page supplies a comment permalink; otherwise it stays null.
-- **Unsupported/failed:** the worker could not prepare the comment or Instagram requires attention. Inspect the browser for the next step.
-- **Unknown:** a click may have reached Instagram but confirmation was unavailable. There is no automatic resubmission. Check the actual post, then click **I checked Instagram** in Recent activity to unlock further publishing. Acknowledgement records `reviewed`, not success.
+The worker checks the signed-in profile and comment controls, submits the comment, reloads the post, and looks for the text under your username in a rendered comment row.
 
-Unknown or pending attempts block further publishing until resolved; after a backend restart, interrupted attempts become unknown. One browser command runs at a time. A persistent request key and a short duplicate-content window also guard accidental resubmission. This is not an exactly-once delivery guarantee: comment sorting, delayed rendering or hidden comments can prevent verification. Missing a visible comment does not establish that it wasn't posted.
+- **Published:** the text and author were found after reload. This is browser verification, not an API receipt. A comment ID appears only if Instagram exposes one in the page.
+- **Unsupported / failed:** inspect the reason and the Instagram window before trying again.
+- **Unknown:** a submission may have reached Instagram, but verification failed. Check the actual post, then click **I checked Instagram** in Recent activity to unlock publishing. This records **reviewed**, not success.
 
-Text is limited to 2,200 Unicode code points by the application. Emojis and line breaks are supported. Tracking query parameters are removed; non-Instagram URLs and unsupported paths are rejected.
+Pending or unknown attempts block further publishing. After a backend restart, interrupted attempts become unknown. Each click on Publish is a new attempt; repeated text can create duplicate comments. Comment sorting, delays, and hidden comments can prevent verification, so a missing visible comment does not prove it was never posted.
 
-## Local data and disconnection
+## Your local data
 
-- Database: `backend/instacomment.db` when launched with the script.
-- Browser sign-in: `backend/.local/browser-profile/` (directory restricted to your local OS user).
-- Automatically generated session signing secret: `backend/.local/session-secret`.
+Downloaded-launcher installations use:
 
-The `.local` directory is ignored by Git. Browser profile data includes sensitive authentication state; don't share or commit it. No Instagram cookies are exported to the frontend or reused in private HTTP API calls. Browser sessions persist across restarts in that dedicated profile.
+```text
+~/Library/Application Support/InstaComment/
+  current.json                 Last successfully started release
+  versions/                    Installed app versions and dependencies
+  data/instacomment.db          Activity history
+  data/.local/browser-profile/  Dedicated Instagram sign-in
+  data/.local/session-secret    Local session signing secret
+```
 
-**Settings → Disconnect & clear browser sign-in** closes the dedicated browser and deletes its local profile. Activity history is retained. Closing the app alone preserves sign-in for next time.
+The dedicated profile is separate from your normal Chrome profile. It contains sensitive authentication state; do not share or commit it. Updates preserve this directory. Keep a backup of `data/` if the activity history matters to you, with the app fully stopped before copying it.
 
-This is deliberately one local user: browser-mode activity is shared across your local InstaComment tabs and survives app restarts. Backend checks require loopback clients, local Host headers, an exact Origin and a session-bound CSRF token. Do not expose this service with a tunnel, bind it to a LAN/public interface, deploy it to a cloud host or start multiple backend workers. Any process running as your local OS user remains within the local trust boundary.
+**Settings → Disconnect & clear browser sign-in** closes the Instagram browser and removes that profile. Activity history is retained. Stopping the launcher preserves both sign-in and history for next time.
 
-## Demo mode
+**Existing source-checkout users:** the downloaded launcher uses its own data directory. Your existing `backend/instacomment.db` and `backend/.local/` are left untouched; sign in once in the new installation. To keep using your existing data without migration, use the source-checkout instructions below.
 
-To use the simulated studio, start the servers manually in separate terminals:
+To uninstall, stop the app and remove the downloaded folder. Removing `~/Library/Application Support/InstaComment/` also permanently removes installed versions, sign-in, and activity history; keep it if you want those preserved.
+
+The app is for one local user. Keep the workspace at **http://localhost:5173**. Do not expose the backend through tunnels, bind it to a public/LAN interface, or run multiple backend workers. Backend checks require local clients, local Host headers, the exact frontend Origin, and a session-bound CSRF token.
+
+## Troubleshooting
+
+| Message or symptom | What to do |
+| --- | --- |
+| Python, Node.js, npm, or Chrome missing | Install the prerequisites above, then reopen the launcher. |
+| Certificate verification failed | Follow the Python macOS installer's certificate setup instructions, then retry. |
+| Port 5173 or 8000 is in use / app already running | Return to the previous Terminal window and press Ctrl+C. Do not run two copies. |
+| Dependency installation failed | Check internet access and the Terminal error. Relaunch to retry. A successful setup is cached. |
+| No usable release available | Download the release ZIP from Releases. From a source checkout, use `--local`. |
+| Browser tab did not open | Open **http://localhost:5173** manually after the launcher says it is ready. |
+| Could not open the Instagram browser | Check Chrome is installed in `/Applications` and another app instance is not using the profile. |
+| Could not identify your profile | Finish login, use English, dismiss dialogs, and click Check connection again. |
+| Publishing status unknown | Check the actual Instagram post before acknowledging the result. |
+
+Keep error text when reporting a problem. Do not share your database, browser profile, credentials, or session secret.
+
+## Run from source / develop the app
+
+Requires the same macOS prerequisites. Clone this repository or download the source, open Terminal in its root folder, then run:
+
+```sh
+./InstaComment.command --local
+```
+
+This installs dependencies, starts the current checkout, and opens the workspace. It **does not download releases or overwrite your source**. Changes to dependency manifests trigger setup again. Local data stays in `backend/instacomment.db` and `backend/.local/`.
+
+If dependencies are already installed, the existing development command is still available:
+
+```sh
+./scripts/start-local.sh
+```
+
+It starts both servers without opening the workspace automatically. Stop with Ctrl+C. After changing dependencies manually, reinstall them:
+
+```sh
+backend/.venv/bin/python -m pip install -r backend/requirements.txt
+npm --prefix frontend ci
+```
+
+The app uses Node Playwright from `frontend/node_modules`; Python Playwright is not required. To use downloaded Chromium instead of Chrome with the development script:
+
+```sh
+npm --prefix frontend run browser:install
+BROWSER_CHANNEL=chromium ./scripts/start-local.sh
+```
+
+### Demo mode
+
+Start these in separate terminals from the repository root:
 
 ```sh
 cd backend
@@ -100,11 +154,15 @@ cd frontend
 npm run dev -- --port 5173 --strictPort
 ```
 
-Demo scenario buttons cover simulated success, inaccessible targets, permissions, expired credentials, rate limits, provider errors and unknown outcomes. Nothing is posted to Instagram. Old API feasibility notes and API-client unit tests are retained for reference; the browser app no longer uses Meta OAuth or Graph publishing endpoints. The old Vercel/Render configurations are not deployment targets for this local edition; Docker Compose remains demo-only.
+Demo mode simulates publishing, errors, and uncertain results; nothing is posted to Instagram. The launcher always starts real **local browser mode**. Old Vercel/Render configuration files are not deployment targets for this edition; Docker Compose is demo-only.
 
-## Tests and current verification
+## Testing
+
+From the repository root:
 
 ```sh
+python3 -m unittest discover -s scripts/tests -p 'test_launcher.py' -v
+python3 -m unittest discover -s scripts/tests -p 'test_launcher_smoke.py' -v
 cd backend
 .venv/bin/python -m pytest tests -q
 cd ../frontend
@@ -115,27 +173,27 @@ npm run test:browser
 npm run test:e2e
 ```
 
-- Backend: 45 tests passed, including browser dispatch, idempotency, persistence, local-host/CSRF checks, unknown-outcome acknowledgement and serialized browser access.
-- Frontend: 10 Vitest tests passed, including browser connection controls, publishing and manual acknowledgement.
-- Production frontend build passed.
-- Five DOM verification tests passed: author/text association, rejection of captions, whitespace/Unicode and ID handling.
-- Two Playwright UI tests passed when run from the user’s normal Terminal. Desktop dark-mode and mobile screenshots were inspected; no console errors were captured. The saved traces confirmed HTTP 200 from Vite at localhost:5173. These tests mock browser-mode API calls and do not verify real Instagram publishing.
-- Browser integration fixtures intercept **all** browser requests and simulate Instagram pages; they never submit real comments. Chrome launch is blocked inside the implementation sandbox. Run the worker fixture suite from your own Terminal; live Instagram verification remains separate.
-- No real Instagram comment was posted during this rebuild. Live compatibility with your account must be verified with the first manual test above.
+The launcher smoke test requires installed dependencies and free ports 5173/8000. It launches the packaged backend/frontend with temporary data, checks readiness, and shuts them down. It never opens Instagram or posts comments.
 
-If you see “Could not open the browser,” check Chrome is installed and no other InstaComment backend owns its profile. If you see “Could not identify your profile,” finish login, use English, dismiss dialogs and check again. If Instagram's UI no longer matches the selectors, the app stops; share the visible error rather than credentials or browser-profile files.
+For desktop/mobile screenshots and console-error checks against an already-running frontend, use `npm run test:ui` from `frontend/`. These tests mock API calls; reports and screenshots go to `frontend/playwright-report/` and `frontend/test-results/`. The `test:e2e` command starts separate demo servers on ports 5175/8005. Real Instagram compatibility still requires your own manual verification.
 
-## Screenshot and console-error QA
+## Publishing updates on GitHub
 
-With Vite already running at http://localhost:5173, run this from your normal Terminal:
+The [release workflow](.github/workflows/release.yml) runs on stable version tags such as `v1.0.0`. It checks the launcher, backend, frontend, and packaged server startup, then creates a GitHub Release containing **InstaComment-macOS.zip** and its SHA-256 checksum. The package includes app source and the launcher, never installed dependencies, local databases, browser profiles, or `.env` files.
+
+After committing and pushing tested changes to `main`, a maintainer publishes a new version:
 
 ```sh
-cd frontend
-npm run test:ui
+git tag v1.0.1
+git push origin v1.0.1
 ```
 
-This runs desktop and mobile browser-mode UI workflows against the existing frontend, mocking the backend routes so it cannot open Instagram or post real comments. It tests connection controls, publishing, dark appearance, uncertain-result acknowledgement, and horizontal overflow. Each completed test saves a full-page screenshot and a JSON console-error attachment under `frontend/test-results/`; the HTML report is in `frontend/playwright-report/index.html`. Unexpected JavaScript exceptions or console errors fail the test. Traces are retained on failure.
+Use a new version number each time; do not replace a published tag or its assets. The workflow can also be started manually with an existing stable tag. GitHub Actions needs permission to write repository contents for the release job; no personal access token is required. Releases must remain publicly downloadable for the unauthenticated launcher.
 
-`npm run test:e2e` separately starts isolated demo servers on ports 5175/8005 and runs both real-demo and mocked-browser workflows. It will not reuse your running app servers.
+To inspect a package locally without publishing:
 
-During this rebuild, a Vite listener was found on port 5173, but the sandbox denied HTTP connections (`Operation not permitted`) and denied starting another Vite listener (`listen EPERM`). Both Playwright UI tests failed during Chrome launch (`SIGABRT`/`EPERM`), before loading a page. The user subsequently ran these tests outside the sandbox. The first run exposed an overly strict username locator; that assertion and a Tailwind outline-class styling collision were fixed. The next run passed both tests, generated inspected desktop/mobile screenshots, and reported no console errors. This verifies the simulated UI workflow, not real Instagram publishing.
+```sh
+python3 scripts/package-release.py v1.0.1
+```
+
+The ZIP and checksum appear in ignored `release-dist/`. A release archive is platform-independent source; each Mac installs dependencies for its own architecture. Native signed `.app` packaging and Windows/Linux launchers are not included.

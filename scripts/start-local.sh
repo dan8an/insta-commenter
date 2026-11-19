@@ -25,6 +25,9 @@ cleanup() {
 BACKEND_PID=$!
 (cd frontend && exec node node_modules/vite/bin/vite.js --host localhost --port 5173 --strictPort) &
 FRONTEND_PID=$!
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 0' INT TERM
 echo 'Open http://localhost:5173 — Ctrl+C stops both servers. Close old servers first.'
 while kill -0 "$BACKEND_PID" 2>/dev/null && kill -0 "$FRONTEND_PID" 2>/dev/null; do sleep 1; done
+echo 'An application server stopped. See the error above.' >&2
+exit 1
