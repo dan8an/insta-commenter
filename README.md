@@ -1,7 +1,16 @@
-# InstaComment — local publishing studio
+# InstaComment
 
-Compose Instagram comments in a focused workspace, preview your draft, and publish through a dedicated, visible Chrome window on your Mac. Sign in directly on Instagram; the app never asks for your password or 2FA code.
+InstaComment is a locally hosted Instagram auto-commenting application. It provides a simple interface for composing a comment, selecting an Instagram post or reel, and initiating an automated submission using a dedicated, visible Chrome window on macOS.
 
+The project is intended for **educational experimentation and demonstrations** with accounts and posts you are **authorized** to interact with. Rather than relying on Instagram's official API, InstaComment interacts with the website through a local browser session. You sign in directly on Instagram; the app itself does not ask for your password or two-factor authentication code, all personal information is stored on your device outside of the application.
+
+# What the product does
+- Automated comment submission: Enter a public or otherwise accessible Instagram post/reel URL and a message, then initiate posting through the app instead of manually entering the comment in Instagram.
+- Configurable sequential submissions: The "Times To Post" field allows a requested number of comments of the same comment. Each submission is handled sequentially, with the process stopping if a result cannot be confirmed.
+- Live draft preview: Review the text you intend to submit before starting the operation.
+- Dedicated browser session: Sign in through a separate Chrome profile and verify the connected Instagram username before publishing.
+- Local-first desktop workflow: Run the interface and backend on your Mac without deploying a public server or configuring a Meta developer application.
+  
 ## Download and launch on macOS
 
 **[Download InstaComment for macOS](https://github.com/dan8an/insta-commenter/releases/latest/download/InstaComment-macOS.zip)** · [Release notes and all downloads](https://github.com/dan8an/insta-commenter/releases)
@@ -59,11 +68,11 @@ Use `--no-open` to start the servers without opening the workspace tab automatic
 
 You can comment on posts that your account can access and whose comment controls are available. Browser mode supports top-level comments; reply to existing comments directly on Instagram. Comments are limited to 2,200 Unicode characters, including emojis and line breaks.
 
-No Facebook account, Meta developer app, professional-account conversion, paid API, or tunnel is required. This is unofficial browser automation, not an official Instagram API integration. Instagram can interrupt it with security challenges, limits, or UI changes; the app does not bypass them or automatically retry an uncertain submission.
+No Facebook account, Meta developer app, professional-account conversion, paid API, or tunnel is required. This is unofficial browser automation, not an official Instagram API integration. Instagram may interrupt it with security challenges, limits, or UI changes; the app does not bypass them or automatically retry an uncertain submission.
 
 ## Understanding results
 
-The worker checks the signed-in profile and comment controls, submits the comment, reloads the post, and looks for the text under your username in a rendered comment row.
+The web app checks the signed-in profile and comment controls, submits the comment, reloads the post, and looks for the text under your username in a rendered comment row.
 
 - **Published:** the text and author were found after reload. This is browser verification, not an API receipt. A comment ID appears only if Instagram exposes one in the page.
 - **Unsupported / failed:** inspect the reason and the Instagram window before trying again.
