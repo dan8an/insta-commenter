@@ -4,12 +4,11 @@ InstaComment is a locally hosted Instagram auto-commenting application. It provi
 
 The project is intended for **educational experimentation and demonstrations** with accounts and posts you are **authorized** to interact with. Rather than relying on Instagram's official API, InstaComment interacts with the website through a local browser session. You sign in directly on Instagram; the app itself does not ask for your password or two-factor authentication code, all personal information is stored on your device outside of the application.
 
-# What the product does
-- Automated comment submission: Enter a public or otherwise accessible Instagram post/reel URL and a message, then initiate posting through the app instead of manually entering the comment in Instagram.
-- Configurable sequential submissions: The "Times To Post" field allows a requested number of comments of the same comment. Each submission is handled sequentially, with the process stopping if a result cannot be confirmed.
-- Live draft preview: Review the text you intend to submit before starting the operation.
-- Dedicated browser session: Sign in through a separate Chrome profile and verify the connected Instagram username before publishing.
-- Local-first desktop workflow: Run the interface and backend on your Mac without deploying a public server or configuring a Meta developer application.
+## What the product does
+- **Automated comment submission:** Enter a public or accessible Instagram post/reel URL and a message, then initiate posting through the app instead of manually entering the comment in Instagram.
+- **Configurable number of submissions:** The "Times To Post" field allows a requested number of comments of the same comment. Each submission is handled sequentially, with the process stopping if a result cannot be confirmed.
+- **Dedicated browser session:** Sign in through a separate Chrome profile and verify the connected Instagram username before publishing.
+-**Local-first desktop workflow:** Run the interface and backend on your Mac without deploying a public server or configuring a Meta developer application.
   
 ## Download and launch on macOS
 
