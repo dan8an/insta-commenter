@@ -10,7 +10,7 @@ Compose Instagram comments in a focused workspace, preview your draft, and publi
 
 Install these prerequisites if they are not already on your Mac:
 
-- **Python 3.11 or newer:** [Python for macOS](https://www.python.org/downloads/macos/). Use the installer and its included certificate-installation instructions.
+- **Python 3.11 or newer:** [Python for macOS](https://www.python.org/downloads/macos/). Use the standard macOS installer.
 - **Node.js 22 or newer, with npm:** [Node.js downloads](https://nodejs.org/en/download).
 - **Google Chrome:** [Download Chrome](https://www.google.com/chrome/) and place it in `/Applications`.
 
@@ -30,7 +30,7 @@ This is an unsigned script launcher, not a signed/notarized macOS application. I
 
 ### Automatic updates
 
-On each launch, the launcher checks this repository's **latest stable GitHub release**. It downloads newer versions, verifies the ZIP against the release's SHA-256 checksum, installs their dependencies, and starts the new app. Ordinary UI and technical changes appear once a maintainer publishes a new release and you restart; un-released commits on `main` do not reach launcher users.
+On each launch, the launcher checks this repository's **latest stable GitHub release**. It downloads newer versions, uses macOS's built-in HTTPS client with certificate verification, verifies the ZIP against the release's SHA-256 checksum, installs their dependencies, and starts the new app. Ordinary UI and technical changes appear once a maintainer publishes a new release and you restart; un-released commits on `main` do not reach launcher users.
 
 - Releases install into separate version folders. Existing data is kept outside those folders.
 - The active-version pointer changes only after both servers respond successfully.
@@ -184,8 +184,8 @@ The [release workflow](.github/workflows/release.yml) runs on stable version tag
 After committing and pushing tested changes to `main`, a maintainer publishes a new version:
 
 ```sh
-git tag v1.0.1
-git push origin v1.0.1
+git tag v1.0.2
+git push origin v1.0.2
 ```
 
 Use a new version number each time; do not replace a published tag or its assets. The workflow can also be started manually with an existing stable tag. GitHub Actions needs permission to write repository contents for the release job; no personal access token is required. Releases must remain publicly downloadable for the unauthenticated launcher.
@@ -193,7 +193,7 @@ Use a new version number each time; do not replace a published tag or its assets
 To inspect a package locally without publishing:
 
 ```sh
-python3 scripts/package-release.py v1.0.1
+python3 scripts/package-release.py v1.0.2
 ```
 
 The ZIP and checksum appear in ignored `release-dist/`. A release archive is platform-independent source; each Mac installs dependencies for its own architecture. Native signed `.app` packaging and Windows/Linux launchers are not included.

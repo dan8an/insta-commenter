@@ -53,11 +53,24 @@ def write_json(path, value):
 
 
 def fetch(url, limit=MAX_DOWNLOAD):
-    request = urllib.request.Request(url, headers={
-        'User-Agent': 'InstaComment-Launcher', 'Accept': '*/*'
-    })
-    with urllib.request.urlopen(request, timeout=15) as response:
-        data = response.read(limit + 1)
+    if url.startswith('https://'):
+        # Apple's curl uses macOS certificate trust. A python.org installation
+        # can lack its own CA bundle even when the system trusts GitHub.
+        with tempfile.NamedTemporaryFile(prefix='instacomment-download-') as download:
+            result = subprocess.run([
+                '/usr/bin/curl', '--fail', '--silent', '--show-error', '--location',
+                '--proto', '=https', '--proto-redir', '=https',
+                '--connect-timeout', '10', '--max-time', '60',
+                '--max-filesize', str(limit), '--user-agent', 'InstaComment-Launcher',
+                '--output', download.name, url,
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+            if result.returncode:
+                raise OSError(f'HTTPS download failed: {result.stderr.strip()}')
+            data = download.read(limit + 1)
+    else:
+        request = urllib.request.Request(url, headers={'Accept': '*/*'})
+        with urllib.request.urlopen(request, timeout=15) as response:
+            data = response.read(limit + 1)
     if len(data) > limit:
         raise ValueError('Download exceeds the launcher size limit.')
     return data
