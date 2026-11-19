@@ -8,7 +8,7 @@ The project is intended for **educational experimentation and demonstrations** w
 - **Automated comment submission:** Enter a public or accessible Instagram post/reel URL and a message, then initiate posting through the app instead of manually entering the comment in Instagram.
 - **Configurable number of submissions:** The "Times To Post" field allows a requested number of comments of the same comment. Each submission is handled sequentially, with the process stopping if a result cannot be confirmed.
 - **Dedicated browser session:** Sign in through a separate Chrome profile and verify the connected Instagram username before publishing.
--**Local-first desktop workflow:** Run the interface and backend on your Mac without deploying a public server or configuring a Meta developer application.
+- **Local-first desktop workflow:** Run the interface and backend on your Mac without deploying a public server or configuring a Meta developer application.
   
 ## Download and launch on macOS
 
