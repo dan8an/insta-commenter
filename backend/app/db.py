@@ -32,3 +32,9 @@ Session = sessionmaker(engine, expire_on_commit=False)
 def database():
     with Session() as session:
         yield session
+
+class Confirmation(Base):
+    __tablename__ = 'confirmations'
+    operation_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    username: Mapped[str | None] = mapped_column(String(128))
+    confirmed_at: Mapped[float] = mapped_column(Float, default=time.time)

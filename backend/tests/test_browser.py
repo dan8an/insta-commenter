@@ -93,3 +93,25 @@ def test_review_acknowledgement_allows_a_new_attempt(client):
     mock.side_effect=None;mock.return_value={'comment_id':None,'reason':'Confirmed on reloaded page.'}
     next_attempt=c.post('/api/comments/publish',json=body).json()
     assert next_attempt['id']!=first['id'] and next_attempt['status']=='published'
+
+def test_history_and_export(client):
+    import csv
+    import io
+    c, mock, factory = client
+    mock.return_value = {'username': 'tester', 'comment_id': '123', 'reason': 'Confirmed'}
+    body = dict(payload(), message='Hello, "garden" 🌿')
+    c.post('/api/comments/publish', json=body).raise_for_status()
+    with factory() as db:
+        for i, (uid, status, demo) in enumerate([
+            ('local-owner','published',False), ('local-owner','published',True),
+            ('local-owner','unknown',False), ('other','published',False)
+        ]):
+            db.add(Operation(id=str(i), user_id=uid, fingerprint='a', post_url=body['url'],
+                             message='Older comment', status=status, demo=demo))
+        db.commit()
+    history = c.get('/api/comments/history?q=tester').json()
+    assert history['total'] == 2 and len(history['items']) == 1
+    assert history['items'][0]['confirmed_at']
+    rows = list(csv.DictReader(io.StringIO(c.get('/api/comments/history.csv').text)))
+    assert len(rows) == 2
+    assert {(r['account'], r['comment']) for r in rows} == {('tester', body['message']), ('', 'Older comment')}

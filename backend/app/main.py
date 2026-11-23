@@ -1,12 +1,16 @@
+import csv, io
+from datetime import datetime, timezone
+from fastapi import Query
+from fastapi.responses import StreamingResponse
 import hashlib, secrets, time, uuid
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from itsdangerous import URLSafeTimedSerializer, BadSignature
-from sqlalchemy import select, delete, update
+from sqlalchemy import select, delete, update, func, or_
 from .core import settings, signer_secret, cipher
-from .db import Base, engine, database, Account, Operation, Session
+from .db import Base, engine, database, Account, Operation, Session, Confirmation
 from .schemas import Target, Publish
 from .services.instagram_client import InstagramClient, ProviderError
 from .services.browser_service import browser
@@ -120,6 +124,7 @@ async def publish(body: Publish, request: Request, db=Depends(database)):
         if settings.mode == 'browser':
             result = await browser.command('publish', url=body.url, message=body.message)
             op.comment_id = result.get('comment_id')
+            db.add(Confirmation(operation_id=op.id, username=result.get('username')))
             op.reason = result['reason']
             op.status = 'published'
             db.commit()
@@ -154,3 +159,42 @@ def acknowledge(operation_id: str, request: Request, db=Depends(database)):
     op.reason = 'User acknowledged checking Instagram. Publishing outcome was not automatically confirmed.'
     db.commit()
     return serialize(op)
+
+def posted_comments(uid):
+    return (select(Operation, Confirmation)
+            .outerjoin(Confirmation, Confirmation.operation_id == Operation.id)
+            .where(Operation.user_id == uid, Operation.status == 'published', Operation.demo.is_(False)))
+
+@app.get('/api/comments/history')
+def comment_history(request: Request, q: str = '', offset: int = Query(0, ge=0), db=Depends(database)):
+    base = posted_comments(request.state.uid)
+    total = db.scalar(select(func.count()).select_from(base.subquery()))
+    if q.strip():
+        base = base.where(or_(*(field.icontains(q.strip(), autoescape=True)
+                                for field in (Operation.message, Operation.post_url, Confirmation.username))))
+    rows = db.execute(base.order_by(Operation.created_at.desc(), Operation.id.desc()).offset(offset).limit(26)).all()
+    return {'total': total, 'more': len(rows) > 25,
+            'items': [dict(serialize(op), username=meta.username if meta else None,
+                           confirmed_at=meta.confirmed_at if meta else None) for op, meta in rows[:25]]}
+
+@app.get('/api/comments/history.csv')
+def export_comments(request: Request, db=Depends(database)):
+    uid = request.state.uid
+    factory = db.get_bind()
+    def records():
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        def row(values):
+            buffer.seek(0)
+            buffer.truncate()
+            writer.writerow(["'" + v if isinstance(v, str) and v.lstrip().startswith(('=', '+', '-', '@')) else v for v in values])
+            return buffer.getvalue()
+        def utc(timestamp):
+            return datetime.fromtimestamp(timestamp, timezone.utc).isoformat()
+        yield row(['operation_id','account','comment','post_url','submitted_at_utc','confirmed_at_utc','comment_id','media_id'])
+        with Session(bind=factory) as reader:
+            stmt = posted_comments(uid).order_by(Operation.created_at.desc(), Operation.id.desc())
+            for op, meta in reader.execute(stmt.execution_options(yield_per=256)):
+                yield row([op.id, meta.username if meta else None, op.message, op.post_url, utc(op.created_at),
+                           utc(meta.confirmed_at) if meta else None, op.comment_id, op.media_id])
+    return StreamingResponse(records(), media_type='text/csv', headers={'Content-Disposition':'attachment; filename="posted-comments.csv"'})

@@ -353,7 +353,7 @@ async function publish({url,message}) {
     const createdId = createdCommentId(watch.state.result.payload, message, author);
     // The id, text, and account are the confirmation. Opening the comment link would leave the post and force the next comment to load it again.
     if (!createdId) fail('unknown', 'Instagram did not return the new comment. Check the post before trying again.');
-    return {comment_id:createdId, reason:`Confirmed from the save response as @${author}. The post stayed open for the next comment.`};
+    return {username:author, comment_id:createdId, reason:`Confirmed from the save response as @${author}. The post stayed open for the next comment.`};
   } catch(e) {
     if (e instanceof BrowserFailure) throw e;
     if (submitted) fail('unknown','Submission may have reached Instagram, but confirmation was unavailable. Inspect the post before trying again. No automatic retry was made.');
