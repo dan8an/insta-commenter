@@ -115,3 +115,17 @@ def test_history_and_export(client):
     rows = list(csv.DictReader(io.StringIO(c.get('/api/comments/history.csv').text)))
     assert len(rows) == 2
     assert {(r['account'], r['comment']) for r in rows} == {('tester', body['message']), ('', 'Older comment')}
+
+def test_legacy_verified_account_search_and_export(client):
+    import csv
+    import io
+    c, _, factory = client
+    with factory() as db:
+        db.add(Operation(id='old', user_id='local-owner', fingerprint='x', post_url=payload()['url'],
+                         message='hello', status='published', demo=False,
+                         reason='Confirmed on the comment link as @old.name_1. This is browser verification, not an API receipt.'))
+        db.commit()
+    item, = c.get('/api/comments/history?q=old.name').json()['items']
+    assert item['username'] == 'old.name_1' and item['confirmed_at'] is None
+    row, = csv.DictReader(io.StringIO(c.get('/api/comments/history.csv').text))
+    assert row['account'] == 'old.name_1'

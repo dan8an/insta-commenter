@@ -8,7 +8,7 @@ from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from itsdangerous import URLSafeTimedSerializer, BadSignature
-from sqlalchemy import select, delete, update, func, or_
+from sqlalchemy import select, delete, update, func, or_, case, and_
 from .core import settings, signer_secret, cipher
 from .db import Base, engine, database, Account, Operation, Session, Confirmation
 from .schemas import Target, Publish
@@ -160,8 +160,23 @@ def acknowledge(operation_id: str, request: Request, db=Depends(database)):
     db.commit()
     return serialize(op)
 
+def posting_account():
+    # Older workers recorded the verified author in one of these fixed messages.
+    reason = Operation.reason
+    formats = [
+        ('Confirmed from the save response as @', '. The post stayed open for the next comment.'),
+        ('Confirmed on the comment link as @', '. This is browser verification, not an API receipt.'),
+        ('Confirmed on the reloaded Instagram page as @', '. This is browser verification, not an API receipt.'),
+    ]
+    matches = []
+    for prefix, suffix in formats:
+        handle_length = func.length(reason) - len(prefix) - len(suffix)
+        matches.append((and_(reason.startswith(prefix), reason.endswith(suffix), handle_length.between(1, 30)),
+                        func.substr(reason, len(prefix) + 1, handle_length)))
+    return func.coalesce(Confirmation.username, case(*matches))
+
 def posted_comments(uid):
-    return (select(Operation, Confirmation)
+    return (select(Operation, Confirmation, posting_account())
             .outerjoin(Confirmation, Confirmation.operation_id == Operation.id)
             .where(Operation.user_id == uid, Operation.status == 'published', Operation.demo.is_(False)))
 
@@ -171,11 +186,11 @@ def comment_history(request: Request, q: str = '', offset: int = Query(0, ge=0),
     total = db.scalar(select(func.count()).select_from(base.subquery()))
     if q.strip():
         base = base.where(or_(*(field.icontains(q.strip(), autoescape=True)
-                                for field in (Operation.message, Operation.post_url, Confirmation.username))))
+                                for field in (Operation.message, Operation.post_url, posting_account()))))
     rows = db.execute(base.order_by(Operation.created_at.desc(), Operation.id.desc()).offset(offset).limit(26)).all()
     return {'total': total, 'more': len(rows) > 25,
-            'items': [dict(serialize(op), username=meta.username if meta else None,
-                           confirmed_at=meta.confirmed_at if meta else None) for op, meta in rows[:25]]}
+            'items': [dict(serialize(op), username=account,
+                           confirmed_at=meta.confirmed_at if meta else None) for op, meta, account in rows[:25]]}
 
 @app.get('/api/comments/history.csv')
 def export_comments(request: Request, db=Depends(database)):
@@ -194,7 +209,7 @@ def export_comments(request: Request, db=Depends(database)):
         yield row(['operation_id','account','comment','post_url','submitted_at_utc','confirmed_at_utc','comment_id','media_id'])
         with Session(bind=factory) as reader:
             stmt = posted_comments(uid).order_by(Operation.created_at.desc(), Operation.id.desc())
-            for op, meta in reader.execute(stmt.execution_options(yield_per=256)):
-                yield row([op.id, meta.username if meta else None, op.message, op.post_url, utc(op.created_at),
+            for op, meta, account in reader.execute(stmt.execution_options(yield_per=256)):
+                yield row([op.id, account, op.message, op.post_url, utc(op.created_at),
                            utc(meta.confirmed_at) if meta else None, op.comment_id, op.media_id])
     return StreamingResponse(records(), media_type='text/csv', headers={'Content-Disposition':'attachment; filename="posted-comments.csv"'})
