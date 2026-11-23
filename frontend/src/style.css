@@ -268,3 +268,6 @@ input:disabled, textarea:disabled { opacity: .65; }
   .posted-history .activity-row { display: grid; }
   .history-controls > label { flex-basis: 100%; }
 }
+
+.history-pagination .page-size { align-items: center; margin: 0; gap: .5rem; }
+.page-size select { font: inherit; color: inherit; background: var(--surface); padding: .4rem; border: 1px solid var(--line); border-radius: .5rem; }

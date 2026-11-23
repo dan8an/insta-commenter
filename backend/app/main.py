@@ -181,7 +181,7 @@ def posted_comments(uid):
             .where(Operation.user_id == uid, Operation.status == 'published', Operation.demo.is_(False)))
 
 @app.get('/api/comments/history')
-def comment_history(request: Request, q: str = '', offset: int = Query(0, ge=0), account: list[str] = Query(default=[]), db=Depends(database)):
+def comment_history(request: Request, q: str = '', offset: int = Query(0, ge=0), limit: int = Query(25, ge=1, le=40), account: list[str] = Query(default=[]), db=Depends(database)):
     base = posted_comments(request.state.uid)
     handle = func.lower(posting_account()).label('handle')
     counts = db.execute(base.with_only_columns(handle, func.count()).group_by('handle').order_by('handle')).all()
@@ -191,13 +191,13 @@ def comment_history(request: Request, q: str = '', offset: int = Query(0, ge=0),
     if q.strip():
         base = base.where(or_(*(field.icontains(q.strip(), autoescape=True)
                                 for field in (Operation.message, Operation.post_url, posting_account()))))
-    rows = db.execute(base.order_by(Operation.created_at.desc(), Operation.id.desc()).offset(offset).limit(26)).all()
+    rows = db.execute(base.order_by(Operation.created_at.desc(), Operation.id.desc()).offset(offset).limit(limit + 1)).all()
     matched = db.scalar(select(func.count()).select_from(base.subquery())) if account or q.strip() else total
     return {'total': total, 'matched': matched,
             'accounts': [{'username': name, 'count': count} for name, count in counts if name],
-            'more': len(rows) > 25,
+            'more': len(rows) > limit,
             'items': [dict(serialize(op), username=account,
-                           confirmed_at=meta.confirmed_at if meta else None) for op, meta, account in rows[:25]]}
+                           confirmed_at=meta.confirmed_at if meta else None) for op, meta, account in rows[:limit]]}
 
 @app.get('/api/comments/history.csv')
 def export_comments(request: Request, db=Depends(database)):

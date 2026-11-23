@@ -6,21 +6,35 @@ import {Button} from './components/ui/button';
 type PostedComment = Activity & {username: string | null; confirmed_at: number | null};
 type History = {total: number; matched: number; accounts: {username: string; count: number}[]; more: boolean; items: PostedComment[]};
 
-const pageSize = 25;
+const pageSizes = [10, 20, 40];
+
+async function loadHistory(params: URLSearchParams, offset: number, pageSize: number): Promise<History> {
+  const first = await api<History>(`/comments/history?${params}`);
+  let items = first.items.slice(0, pageSize);
+  // A running older backend serves fixed 25-row batches until it restarts.
+  if (first.more && items.length > 0 && items.length < pageSize) {
+    const next = new URLSearchParams(params);
+    next.set('offset', String(offset + items.length));
+    const rest = await api<History>(`/comments/history?${next}`);
+    items = items.concat(rest.items.slice(0, pageSize - items.length));
+  }
+  return {...first, items};
+}
 
 export function CommentHistory(){
   const [search, setSearch] = useState('');
+  const [pageSize, setPageSize] = useState(20);
   const [offset, setOffset] = useState(0);
   const [selected, setSelected] = useState<string[]>([]);
-  const params = new URLSearchParams({q: search, offset: String(offset)});
+  const params = new URLSearchParams({q: search, offset: String(offset), limit: String(pageSize)});
   selected.forEach(name => params.append('account', name));
   function changeAccounts(names: string[]) {
     setSelected(names);
     setOffset(0);
   }
   const {data, isError} = useQuery({
-    queryKey: ['activity', 'posted', search, offset, selected],
-    queryFn: () => api<History>(`/comments/history?${params}`),
+    queryKey: ['activity', 'posted', search, offset, selected, pageSize],
+    queryFn: () => loadHistory(params, offset, pageSize),
     refetchInterval: 5000
   });
   const page = Math.floor(offset / pageSize) + 1;
@@ -57,6 +71,14 @@ export function CommentHistory(){
     </article>)}
     {pages > 0 && <nav className="history-pagination" aria-label="Comment history pages">
       <span role="status">Page {page.toLocaleString()} of {pages.toLocaleString()}</span>
+      <label className="page-size">Comments per page
+        <select value={pageSize} onChange={event => {
+          setPageSize(Number(event.target.value));
+          setOffset(0);
+        }}>
+          {pageSizes.map(size => <option key={size} value={size}>{size}</option>)}
+        </select>
+      </label>
       <div className="page-buttons">
         <Button variant="outline" disabled={page === 1} onClick={() => goToPage(page - 1)}>Previous</Button>
         {visiblePages.map((number, index) => <span className="page-step" key={number}>

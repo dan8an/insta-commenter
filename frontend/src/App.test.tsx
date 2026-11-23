@@ -71,12 +71,14 @@ describe('local browser interface',()=>{
 
 it('jumps to the last history page and resets pagination for a search', async()=>{
  const {fetcher}=setup(true);
- await screen.findByText('Page 1 of 424');
- fireEvent.click(screen.getByRole('button',{name:'Page 424'}));
- await screen.findByText('Page 424 of 424');
+ await screen.findByText('Page 1 of 530');
+ fireEvent.click(screen.getByRole('button',{name:'Page 530'}));
+ await screen.findByText('Page 530 of 530');
  expect(screen.getByRole('button',{name:'Next'})).toBeDisabled();
- expect(fetcher.mock.calls.some(([url])=>url.includes('offset=10575'))).toBe(true);
+ expect(fetcher.mock.calls.some(([url])=>url.includes('offset=10580'))).toBe(true);
+ fireEvent.change(screen.getByLabelText('Comments per page'),{target:{value:'10'}});
+ await screen.findByText('Page 1 of 1,059');
  fireEvent.change(screen.getByRole('searchbox'),{target:{value:'garden'}});
- await screen.findByText('Page 1 of 2');
+ await screen.findByText('Page 1 of 3');
  expect(screen.getByRole('button',{name:'Previous'})).toBeDisabled();
 });
