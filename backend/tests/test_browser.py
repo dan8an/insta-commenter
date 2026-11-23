@@ -129,3 +129,13 @@ def test_legacy_verified_account_search_and_export(client):
     assert item['username'] == 'old.name_1' and item['confirmed_at'] is None
     row, = csv.DictReader(io.StringIO(c.get('/api/comments/history.csv').text))
     assert row['account'] == 'old.name_1'
+
+def test_account_filter_counts_and_combined_search(client):
+    c, mock, _ = client
+    for name, message in [('Ada','one'), ('ada','two'), ('ben','one'), ('cara','two')]:
+        mock.return_value = {'username': name, 'reason': 'Confirmed'}
+        c.post('/api/comments/publish', json=dict(payload(), message=message)).raise_for_status()
+    result = c.get('/api/comments/history?account=ada&account=ben&q=one').json()
+    assert result['accounts'] == [{'username':'ada','count':2}, {'username':'ben','count':1}, {'username':'cara','count':1}]
+    assert (result['total'], result['matched']) == (4, 2)
+    assert {item['username'] for item in result['items']} == {'Ada','ben'}

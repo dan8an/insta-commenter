@@ -11,6 +11,10 @@ function setup(initialConnected=false,outcome='published'){
   else if(input.endsWith('/browser/open'))data={connected:false,reason:'Sign in'};
   else if(input.endsWith('/comments/publish')){const body=JSON.parse(init?.body as string);activities=[{id:'attempt',post_url:body.url,message:body.message,status:outcome,comment_id:null,created_at:Date.now()/1000,demo:false,reason:outcome==='published'?'Confirmed on the reloaded page.':'Check Instagram before retrying.'}];data=activities[0]}
   else if(input.endsWith('/acknowledge')){activities[0].status='reviewed';data=activities[0]}
+  else if(input.includes('/comments/history?')){
+    const filtered = !!new URL(input, 'http://localhost').searchParams.get('q');
+    data={total:10584,matched:filtered?26:10584,items:[],accounts:[]};
+  }
   else if(input.endsWith('/activity'))data=activities;
   return {ok:true,json:async()=>data};
  });
@@ -63,4 +67,16 @@ describe('local browser interface',()=>{
   await waitFor(()=>expect(screen.queryByText('Publishing status unknown')).not.toBeInTheDocument());
   expect(screen.queryByText('Published successfully')).not.toBeInTheDocument();
  });
+});
+
+it('jumps to the last history page and resets pagination for a search', async()=>{
+ const {fetcher}=setup(true);
+ await screen.findByText('Page 1 of 424');
+ fireEvent.click(screen.getByRole('button',{name:'Page 424'}));
+ await screen.findByText('Page 424 of 424');
+ expect(screen.getByRole('button',{name:'Next'})).toBeDisabled();
+ expect(fetcher.mock.calls.some(([url])=>url.includes('offset=10575'))).toBe(true);
+ fireEvent.change(screen.getByRole('searchbox'),{target:{value:'garden'}});
+ await screen.findByText('Page 1 of 2');
+ expect(screen.getByRole('button',{name:'Previous'})).toBeDisabled();
 });
