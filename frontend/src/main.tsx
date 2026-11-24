@@ -6,18 +6,65 @@ import {Instagram,ArrowUpRight,Monitor,Check,Copy,Link2,MessageCircle,Settings2,
 import {Button} from './components/ui/button';
 import {api,validUrl,type Connection,type Activity} from './api';
 import './style.css';
+function formatDuration(totalMinutes:number){
+ const hours=Math.floor(totalMinutes/60);
+ const minutes=totalMinutes%60;
+ const minuteLabel=`${minutes} ${minutes===1?'minute':'minutes'}`;
+ if(hours===0)return minuteLabel;
+ return `${hours.toLocaleString()} ${hours===1?'hour':'hours'} and ${minuteLabel}`;
+}
 export function App(){
  const client=useQueryClient();
  const auth=useQuery({queryKey:['auth'],queryFn:()=>api<Connection>('/auth/status'),retry:false});
  const history=useQuery({queryKey:['activity'],queryFn:()=>api<Activity[]>('/activity'),enabled:!!auth.data,refetchInterval:5000});
  const [url,setUrl]=useState(''),[message,setMessage]=useState(''),[error,setError]=useState(''),[settings,setSettings]=useState(false),[dark,setDark]=useState(localStorage.getItem('theme')==='dark'),[reply,setReply]=useState(false),[parent,setParent]=useState(''),[copied,setCopied]=useState(false),[times,setTimes]=useState(1),[sent,setSent]=useState(0);
  document.documentElement.classList.toggle('dark',dark);
- const publish=useMutation({mutationFn:async()=>{const body={url,message,operation:reply?'reply':'comment' as const,...(reply?{parent_comment_id:parent}:{})};const count=Math.min(10000,Math.max(1,Math.round(times)));setSent(0);let last!:Activity;for(let i=0;i<count;i++){last=await api<Activity>('/comments/publish',body);setSent(i+1);if(last.status!=='published')return last}return last},retry:false,onSuccess:()=>client.invalidateQueries({queryKey:['activity']})});
+ const [intervalInput,setIntervalInput]=useState('0');
+ const [nextSend,setNextSend]=useState<number|null>(null);
+ const [stopped,setStopped]=useState(false);
+ const run=React.useRef<AbortController|null>(null);
+ React.useEffect(()=>()=>run.current?.abort(),[]);
+ const minutes=Number(intervalInput);
+ const validInterval=intervalInput.trim()!=='' && Number.isInteger(minutes) && minutes>=0 && minutes<=1440;
+ const publish=useMutation({mutationFn:async()=>{
+   const body={url,message,operation:reply?'reply':'comment' as const,...(reply?{parent_comment_id:parent}:{})};
+   const controller=new AbortController();
+   run.current=controller;
+   setSent(0);
+   setStopped(false);
+   let last!:Activity;
+   try {
+     for(let i=0;i<times && !controller.signal.aborted;i++){
+       const started=Date.now();
+       last=await api<Activity>('/comments/publish',body);
+       setSent(i+1);
+       if(last.status!=='published' || i+1===times || controller.signal.aborted) break;
+       const due=started+minutes*60000;
+       if(due>Date.now()){
+         setNextSend(due);
+         await new Promise<void>(resolve=>{
+           function finish(){
+             clearTimeout(timer);
+             controller.signal.removeEventListener('abort',finish);
+             resolve();
+           }
+           const timer=setTimeout(finish,due-Date.now());
+           controller.signal.addEventListener('abort',finish,{once:true});
+         });
+         setNextSend(null);
+       }
+     }
+     return last;
+   } finally {
+     setNextSend(null);
+     run.current=null;
+   }
+ },retry:false,onSuccess:()=>client.invalidateQueries({queryKey:['activity']})});
  const browserAction=useMutation({mutationFn:()=>api('/auth/browser/open',{}),onSuccess:()=>client.invalidateQueries({queryKey:['auth']}),retry:false});
  async function acknowledge(id:string){try{await api('/activity/'+id+'/acknowledge',{});await client.invalidateQueries({queryKey:['activity']});publish.reset()}catch(e){setError((e as Error).message)}}
- function edit(){publish.reset();setError('')}
+ function edit(){setStopped(false);publish.reset();setError('')}
  function setRepeat(raw:string){const value=Math.round(Number(raw));setTimes(Number.isFinite(value)?Math.min(10000,Math.max(1,value)):1);edit()}
- function submit(e:React.FormEvent){e.preventDefault();if(!validUrl(url))return setError('Enter a valid HTTPS Instagram post or Reel link.');if(!message.trim()||Array.from(message).length>2200)return setError('Write a comment between 1 and 2,200 characters.');if(reply&&!/^\d{1,64}$/.test(parent))return setError('Enter an authorized numeric parent comment ID.');if(!auth.data?.connected)return setError('Open the Instagram browser, sign in, and click Check connection to continue.');setError('');publish.mutate()}
+ function submit(e:React.FormEvent){e.preventDefault();if(!validUrl(url))return setError('Enter a valid HTTPS Instagram post or Reel link.');if(!message.trim()||Array.from(message).length>2200)return setError('Write a comment between 1 and 2,200 characters.');if(reply&&!/^\d{1,64}$/.test(parent))return setError('Enter an authorized numeric parent comment ID.');if(!auth.data?.connected)return setError('Open the Instagram browser, sign in, and click Check connection to continue.');if(times>1&&!validInterval)return setError('Enter a whole interval from 0 to 1,440 minutes.');setError('');publish.mutate()}
  const result=publish.data, demo=auth.data?.mode==='demo';
  const toggleTheme=()=>{setDark(!dark);localStorage.setItem('theme',!dark?'dark':'light')};
  return <><header><a className="brand" href="/" aria-label="InstaComment home"><span className="logo"><MessageCircle size={22}/></span>InstaComment<span className="edition">STUDIO</span></a><div className="header-actions"><button className="icon-button theme-toggle" aria-label="Toggle appearance" onClick={toggleTheme}>{dark?<Sun size={18}/>:<Moon size={18}/>}</button>{auth.data?.connected?<span className="account"><span className="avatar">{auth.data.username?.slice(0,2).toUpperCase()||'IG'}</span><span>@{auth.data.username}<small><i/>{demo?'Demo connection':'Browser connected'}</small></span></span>:<Button variant="outline" disabled={!auth.data||browserAction.isPending||publish.isPending} onClick={()=>browserAction.mutate()}>{browserAction.isPending?'Opening…':'Open Instagram browser'}</Button>}<button className="icon-button" aria-label="Settings" onClick={()=>setSettings(!settings)}><Settings2 size={19}/></button></div></header>
@@ -27,9 +74,15 @@ export function App(){
  <form onSubmit={submit} noValidate><label htmlFor="post">Instagram post URL <span>Post or Reel</span></label><div className="input-wrap"><Link2 size={18}/><input disabled={publish.isPending} id="post" value={url} onChange={e=>{setUrl(e.target.value);edit()}} placeholder="https://www.instagram.com/p/EXAMPLE/" autoComplete="off"/></div><p className="hint">A link to an Instagram post or Reel you can access and comment on.</p>
  <label htmlFor="comment">Your comment <span>Plain text</span></label><div className="textarea-wrap"><textarea disabled={publish.isPending} id="comment" value={message} onChange={e=>{setMessage(e.target.value);edit()}} placeholder="What would you like to say?"/><div className="text-footer"><span>Your words, exactly as written.</span><span className={Array.from(message).length>2200?'over':''}>{Array.from(message).length.toLocaleString()} / 2,200</span></div></div>
  <div className="repeat-settings"><label htmlFor="times">Times to post <span>{times.toLocaleString()} / 10,000</span></label><div className="repeat"><input id="times" type="range" min={1} max={10000} step={1} value={times} disabled={publish.isPending} onChange={e=>setRepeat(e.target.value)}/><input type="number" inputMode="numeric" aria-label="Exact post count" min={1} max={10000} step={1} value={times} disabled={publish.isPending} onChange={e=>setRepeat(e.target.value)}/></div><p className="hint">This comment is sent once for each count. Publishing stops if a send is not confirmed.</p></div>
- {demo&&<details className="reply"><summary>Reply to an existing comment instead</summary><label className="checkbox"><input type="checkbox" checked={reply} onChange={e=>{setReply(e.target.checked);edit()}}/> Publish as an explicit reply</label>{reply&&<><label htmlFor="parent">Authorized parent comment ID</label><input id="parent" value={parent} onChange={e=>{setParent(e.target.value);edit()}} placeholder="Existing comment ID on this post"/></>}</details>}
+ {times>1&&<div className="repeat-settings"><label htmlFor="interval">Post every… (minutes)</label>
+ <input id="interval" type="number" min="0" max="1440" step="1" value={intervalInput} disabled={publish.isPending} onChange={e=>{setIntervalInput(e.target.value);edit()}}/>
+ <p className="hint">{validInterval && (minutes===0?'Send each comment as soon as the previous one is confirmed.':`First comment immediately. Last comment in about ${formatDuration((times-1)*minutes)}. Keep this tab open.`)}</p></div>}
+ {demo&&<details className="reply"><summary>Reply to an existing comment instead</summary><label className="checkbox"><input type="checkbox" disabled={publish.isPending} checked={reply} onChange={e=>{setReply(e.target.checked);edit()}}/> Publish as an explicit reply</label>{reply&&<><label htmlFor="parent">Authorized parent comment ID</label><input id="parent" disabled={publish.isPending} value={parent} onChange={e=>{setParent(e.target.value);edit()}} placeholder="Existing comment ID on this post"/></>}</details>}
  {(error||publish.error||auth.error)&&<div className="error" role="alert"><AlertCircle size={17}/>{error||publish.error?.message||auth.error?.message}</div>}
  {new URLSearchParams(location.search).has('auth_error')&&<p className="error">Instagram connection was not completed. Please connect again.</p>}
+ {publish.isPending&&times>1&&<Button type="button" variant="outline" disabled={stopped} onClick={()=>{run.current?.abort();setStopped(true)}}>Stop remaining sends</Button>}
+ {nextSend&&<p role="status">Next send at {new Date(nextSend).toLocaleTimeString()}.</p>}
+ {stopped&&<p role="status">Remaining sends stopped.</p>}
  <Button className="publish" type="submit" disabled={publish.isPending||!auth.data}>{publish.isPending?<><Loader2 className="spin" size={18}/>Publishing {Math.max(sent,1)} of {times}…</>:<><span>{reply?'Publish Reply':'Publish Comment'}</span><MessageCircle size={18}/></>}</Button><div className="secure"><ShieldCheck size={14}/> {demo?'Simulated publishing · No Instagram credentials needed':'Posted through your local browser · No Meta developer account'}</div></form>
  {result&&<div className={'result '+result.status} role="status"><strong>{result.demo?'Demo · ':''}{result.status==='published'?'Published successfully':result.status==='unsupported'?'Direct publishing unsupported':result.status==='unknown'?'Publishing status unknown':result.status==='publishing'?'Publishing in progress':result.status==='reviewed'?'Reviewed manually':'Publishing failed'}</strong>{result.reason&&<p>{result.reason}</p>}{result.status==='published'&&<><p className="comment-result">{result.message}</p><code>{result.comment_id?`${result.demo?'Simulated ID':'Visible comment ID'}: ${result.comment_id}`:'No comment ID exposed by Instagram’s page.'}</code><small>{new Date(result.created_at*1000).toLocaleString()}</small></>}<div className="result-actions"><Button type="button" variant="outline" onClick={async()=>{try{await navigator.clipboard.writeText(result.message);setCopied(true)}catch{setError('Copy unavailable. Select and copy your comment manually.')}}}><Copy size={14}/>{copied?'Copied':'Copy comment'}</Button><a href={result.post_url} target="_blank" rel="noreferrer">Open Instagram post <ArrowUpRight size={15}/></a></div></div>}
  </section><aside aria-label="Draft preview and browser session"><section className="preview-panel"><div className="card-heading"><div className="panel-title"><Instagram size={18}/><h2>Comment preview</h2></div><span className="section-kicker">LIVE</span></div><div className="preview-comment"><span className="avatar">{auth.data?.username?.slice(0,2).toUpperCase()||'IG'}</span><div><strong>{auth.data?.username||'Your account'}</strong><p className={message?'':'preview-placeholder'}>{message||'Your comment will take shape here.'}</p></div></div><div className="preview-caption">Preview only · Instagram layout may differ</div></section>

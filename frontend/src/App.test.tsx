@@ -24,6 +24,15 @@ function setup(initialConnected=false,outcome='published'){
  return {fetcher,signIn:()=>{connected=true}};
 }
 describe('local browser interface',()=>{
+ it('shows hours and minutes when the posting duration reaches an hour',async()=>{
+  setup(true);
+  await screen.findByText('@tester');
+  fireEvent.change(screen.getByLabelText('Exact post count'),{target:{value:'2'}});
+  for(const [minutes,label] of [[59,'59 minutes'],[60,'1 hour and 0 minutes'],[121,'2 hours and 1 minute']] as const){
+   fireEvent.change(screen.getByLabelText(/Post every/),{target:{value:String(minutes)}});
+   expect(screen.getByText(`Last comment in about ${label}.`,{exact:false})).toBeInTheDocument();
+  }
+ });
  it('opens browser and checks connection without OAuth',async()=>{
   const {fetcher,signIn}=setup();
   await screen.findByText('Local browser publishing');
